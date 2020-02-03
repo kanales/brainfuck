@@ -1,6 +1,4 @@
-module Lib
-    ()
-where
+module Lib where
 
 import           Control.Applicative
 import           Control.Monad.State
@@ -18,7 +16,10 @@ instance Show Cmd where
     show Get       = ","
 
 data Stmt = Command Cmd | Loop [Stmt] deriving Show
-newtype Prog = Prog [Stmt]
+newtype Prog = Prog [Stmt] deriving Show
+
+isToken :: Char -> Bool
+isToken c = c `elem` "+-><.,[]"
 
 fromChar :: Char -> Maybe Cmd
 fromChar '+' = Just Increment
@@ -55,8 +56,8 @@ partitionLoop (c : cs) = case c of
         ']' -> (x, counter - 1)
         _   -> (x, counter)
 
-prog :: String -> Either String [Stmt]
-prog ""   = Right []
+prog :: String -> Either String Prog
+prog ""   = Right . Prog $ []
 prog body = do
     let (cs, sl) = break (== '[') body
     -- parse commands
@@ -66,9 +67,32 @@ prog body = do
     let restM = if null subLoop
             then return []
             else do
-                cmds'    <- fmap Command <$> mapM cmd cs'
-                subLoop' <- prog subLoop
+                cmds'         <- fmap Command <$> mapM cmd cs'
+                Prog subLoop' <- prog subLoop
                 return (Loop subLoop' : cmds')
     rest <- restM
-    Right (cmds ++ rest)
+    Right . Prog $ cmds ++ rest
 
+class PrettyPrint a where
+    pprint :: a -> String
+
+instance PrettyPrint Cmd where
+    pprint Increment = "++*ptr;"
+    pprint Decrement = "--*ptr;"
+    pprint Forward   = "++ptr;"
+    pprint Backward  = "--ptr;"
+    pprint Print     = "putchar(*ptr);"
+    pprint Get       = "getchar(ptr);"
+
+instance PrettyPrint Stmt where
+    pprint (Command c ) = pprint c
+    pprint (Loop    cs) = "while (*ptr) {" ++ (cs >>= pprint) ++ "}"
+
+instance PrettyPrint Prog where
+    pprint (Prog sts) =
+        "#include <stdio.h>\n"
+            ++ "int main() {\n"
+            ++ "char arr[30000] = {0}; char *ptr = arr;"
+            ++ (sts >>= pprint)
+            ++ "    return 0;"
+            ++ "}"
