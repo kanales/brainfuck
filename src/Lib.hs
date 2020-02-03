@@ -4,6 +4,7 @@ import           Control.Applicative
 import           Control.Monad.State
 import           Data.List
 import           System.IO
+import           Debug.Trace
 
 data Cmd = Increment | Decrement | Forward | Backward | Print | Get
 
@@ -33,7 +34,7 @@ fromChar _   = Nothing
 cmd :: Char -> Either String Cmd
 cmd c = case fromChar c of
     Just cmd -> Right cmd
-    Nothing  -> Left ("invalid command" ++ [c])
+    Nothing  -> Left ("invalid command: " ++ [c])
 
 partitionLoop
     :: String
@@ -42,10 +43,10 @@ partitionLoop
 partitionLoop []       = Right ([], [])
 partitionLoop (c : cs) = case c of
     '[' ->
-        let (ins, outs) = partition ((> 0) . snd) (scanl sf ('[', 1) cs)
+        let (ins, outs) = span ((> 0) . snd) (scanl sf ('[', 1) cs)
         in  do
                 when (null outs) (Left "missing closing bracket")
-                when (any ((/= 0) . snd) outs)
+                when ((snd . last) outs /= 0)
                      (Left "unexpected closing bracket")
                 let (ins', outs') = (tail ins, tail outs)
                 Right (fmap fst ins', fmap fst outs')
@@ -60,17 +61,16 @@ prog :: String -> Either String Prog
 prog ""   = Right . Prog $ []
 prog body = do
     let (cs, sl) = break (== '[') body
-    -- parse commands
-    cmds           <- fmap Command <$> mapM cmd cs
-    -- parse loop
-    (subLoop, cs') <- partitionLoop sl
-    let restM = if null subLoop
-            then return []
-            else do
-                cmds'         <- fmap Command <$> mapM cmd cs'
-                Prog subLoop' <- prog subLoop
-                return (Loop subLoop' : cmds')
-    rest <- restM
+    -- PARSE INTIAL COMMANDS
+    cmds          <- fmap Command <$> mapM cmd cs
+
+    -- PARSE LOOP
+
+    -- Loop body
+    (ins, outs)   <- partitionLoop sl
+    Prog loopBody <- prog ins
+    Prog cont     <- prog outs
+    let rest = if null ins then cont else Loop loopBody : cont
     Right . Prog $ cmds ++ rest
 
 class PrettyPrint a where
@@ -82,7 +82,7 @@ instance PrettyPrint Cmd where
     pprint Forward   = "++ptr;"
     pprint Backward  = "--ptr;"
     pprint Print     = "putchar(*ptr);"
-    pprint Get       = "getchar(ptr);"
+    pprint Get       = "*ptr=getchar();"
 
 instance PrettyPrint Stmt where
     pprint (Command c ) = pprint c
@@ -92,7 +92,8 @@ instance PrettyPrint Prog where
     pprint (Prog sts) =
         "#include <stdio.h>\n"
             ++ "int main() {\n"
-            ++ "char arr[30000] = {0}; char *ptr = arr;"
+            ++ "    char arr[30000] = {0};\n"
+            ++ "    char *ptr = arr;\n"
             ++ (sts >>= pprint)
-            ++ "    return 0;"
+            ++ "    return 0;\n"
             ++ "}"
