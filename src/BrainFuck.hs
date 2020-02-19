@@ -1,5 +1,7 @@
 module BrainFuck where
 
+import           Data.Char
+
 data Token = Increment | Decrement | Forward | Backward | Print | Get | POpen | PClose deriving Show
 
 tokenize :: String -> [Token]
@@ -52,15 +54,23 @@ set :: Zipper -> Int -> Zipper
 set (xs, []    ) y = (xs, [y])
 set (xs, _ : ys) y = (xs, y : ys)
 
-eval :: Zipper -> [Cmd] -> IO ()
+empty :: Zipper
+empty = ([], [])
+
+eval :: Zipper -> [Cmd] -> IO Zipper
 eval z cmd = case cmd of
     (Command Backward  : rest) -> eval (backward z) rest
     (Command Forward   : rest) -> eval (forward z) rest
     (Command Increment : rest) -> eval (set z $ get z + 1) rest
     (Command Decrement : rest) -> eval (set z $ get z - 1) rest
-    (Command Print     : rest) -> print (get z) >> eval z rest
+    (Command Print     : rest) -> putChar (chr $ get z) >> eval z rest
     (Command Get       : rest) -> do
         x <- readLn
         eval (set z x) rest
-    [] -> return ()
+    (Loop cs : rest) -> if get z /= 0
+        then do
+            z' <- eval z cs
+            eval z' (Loop cs : rest)
+        else eval z rest
+    [] -> return z
 

@@ -1,12 +1,13 @@
 module Main where
 
-import           Lib
+import           BrainFuck
+import           System.Environment
 import           System.IO
 
 main :: IO ()
 main = do
-    contents <- getContents
-    let p = prog (filter isToken contents)
-    case p of
-        Left  err     -> putStrLn err
-        Right program -> putStrLn (pprint program)
+    [name] <- getArgs
+    withFile name ReadMode $ \fp -> do
+        input <- hGetContents fp
+        (eval empty . parse . tokenize) input
+        return ()
